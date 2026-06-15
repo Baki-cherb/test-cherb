@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="kuka">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KUKA Robot Hub</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Écran de chargement -->
+  <div id="splash" class="splash">
+    <div class="splash-logo">
+      <div class="splash-mark">KR</div>
+      <div class="splash-title">KUKA&nbsp;Robot&nbsp;Hub</div>
+      <div class="splash-sub">Chargement…</div>
+    </div>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <!-- Barre latérale -->
+    <aside id="sidebar" class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">KR</div>
+        <div class="brand-text">
+          <strong>KUKA Robot Hub</strong>
+          <span>Référentiel robotique</span>
+        </div>
+      </div>
+
+      <div class="sidebar-search">
+        <input id="globalSearch" type="search" placeholder="Recherche globale…" autocomplete="off" />
+      </div>
+
+      <nav id="nav" class="nav"><!-- généré dynamiquement --></nav>
+
+      <div class="sidebar-footer">
+        <button id="btnTheme" class="btn-ghost" title="Changer de thème">Thème</button>
+        <button id="btnBackup" class="btn-ghost" title="Sauvegardes & données">Données</button>
+      </div>
+    </aside>
+
+    <!-- Contenu principal -->
+    <main class="main">
+      <header class="topbar">
+        <button id="btnMenu" class="icon-btn" title="Menu" aria-label="Menu">☰</button>
+        <div class="topbar-title">
+          <h1 id="viewTitle">Tableau de bord</h1>
+          <p id="viewSub"></p>
+        </div>
+        <div class="topbar-actions" id="topbarActions"></div>
+      </header>
+
+      <section id="content" class="content"><!-- vues injectées ici --></section>
+    </main>
+  </div>
+
+  <!-- Conteneur des modales -->
+  <div id="modalRoot"></div>
+  <!-- Conteneur des toasts -->
+  <div id="toastRoot" class="toast-root"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
