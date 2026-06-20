@@ -11,7 +11,8 @@ Tout ce qui concerne vos robots, au même endroit :
 | Module | Description |
 |--------|-------------|
 | **Tableau de bord** | Vue d'ensemble, compteurs, activité récente |
-| **Parc robots** | Cartes signalétiques : modèle, contrôleur **KRC**, version **KSS**, n° de série, axes, charge, portée, site, cellule, secteur, photo |
+| **Hiérarchie du parc** | Arborescence **Sites › Lignes › Cellules › Robots** ; rattachement des robots aux cellules |
+| **Parc robots** | Cartes signalétiques : modèle, contrôleur **KRC**, version **KSS**, n° de série, axes, charge, portée, site, cellule, secteur, photo, rattachement hiérarchique |
 | **Programmes** | Archives `.src` / `.dat` / `.zip` + **journal de ce qui a été fait dans le code** (versions, mots-clés, robot lié) |
 | **Bibliothèque de fonctions** | Toutes vos fonctions **KRL** réutilisables (paramètres, description, code avec coloration syntaxique, copier en un clic) |
 | **Variables** | Catalogue des variables : type, portée, valeur/déclaration, robot |

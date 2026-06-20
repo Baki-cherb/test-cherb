@@ -119,6 +119,7 @@
     return {
       version: SCHEMA_VERSION,
       settings: { theme: "kuka", view: "dashboard" },
+      org: [],
       robots: [], programs: [], functions: [], variables: [],
       instructions: [], standards: [], documents: [],
       faults: [], maintenance: [], contacts: [], glossary: []
@@ -177,6 +178,13 @@
       site: "Usine Nord", cell: "Cellule A2", sector: "Assemblage", status: "En production",
       notes: "Pince de soudure par points, surveillance SafeOperation active.", createdAt: nowISO(), updatedAt: nowISO() };
     s.robots = [r1, r2];
+
+    var oSite = { id: uid(), type: "site", parentId: null, name: "Usine Nord", note: "", createdAt: nowISO(), updatedAt: nowISO() };
+    var oLigne = { id: uid(), type: "ligne", parentId: oSite.id, name: "Ligne Carrosserie", note: "", createdAt: nowISO(), updatedAt: nowISO() };
+    var oA1 = { id: uid(), type: "cellule", parentId: oLigne.id, name: "Cellule A1", note: "", createdAt: nowISO(), updatedAt: nowISO() };
+    var oA2 = { id: uid(), type: "cellule", parentId: oLigne.id, name: "Cellule A2", note: "", createdAt: nowISO(), updatedAt: nowISO() };
+    s.org = [oSite, oLigne, oA1, oA2];
+    r1.cellId = oA1.id; r2.cellId = oA2.id;
 
     s.functions = [{
       id: uid(), name: "GET_PART_OK", category: "Sécurité / Process", params: "(BOOL signalEntree)",
@@ -324,6 +332,7 @@
         { name: "site", label: "Site", type: "text" },
         { name: "cell", label: "Cellule", type: "text" },
         { name: "sector", label: "Secteur", type: "text" },
+        { name: "cellId", label: "Rattachement (hiérarchie)", type: "cellRef" },
         { name: "status", label: "État", type: "select", options: ["En production", "En maintenance", "À l'arrêt", "En réserve"] },
         { name: "photo", label: "Photo du robot", type: "file", accept: "image/*" },
         { name: "notes", label: "Notes", type: "textarea" }
@@ -458,6 +467,32 @@
   }
   function fieldByName(mod, name) { return mod.fields.filter(function (f) { return f.name === name; })[0]; }
 
+  // --- Hiérarchie du parc (Sites › Lignes › Cellules) ---
+  function orgNode(id) { return state.org.filter(function (n) { return n.id === id; })[0]; }
+  function orgChildren(parentId, type) {
+    return state.org.filter(function (n) {
+      return n.parentId === (parentId || null) && (!type || n.type === type);
+    }).sort(function (a, b) { return a.name.localeCompare(b.name, "fr"); });
+  }
+  function descendantsOf(id) {
+    var out = [];
+    state.org.forEach(function (n) { if (n.parentId === id) { out.push(n.id); out = out.concat(descendantsOf(n.id)); } });
+    return out;
+  }
+  function cellPath(id) {
+    var n = orgNode(id);
+    if (!n) return "—";
+    var parts = [n.name], p = n.parentId;
+    while (p) { var pn = orgNode(p); if (!pn) break; parts.unshift(pn.name); p = pn.parentId; }
+    return parts.join(" / ");
+  }
+  function cellulesList() {
+    return state.org.filter(function (n) { return n.type === "cellule"; })
+      .map(function (c) { return { id: c.id, path: cellPath(c.id) }; })
+      .sort(function (a, b) { return a.path.localeCompare(b.path, "fr"); });
+  }
+  function robotsInCell(id) { return state.robots.filter(function (r) { return r.cellId === id; }); }
+
   /* -----------------------------------------------------------------------
      Coloration syntaxique KRL (légère et sûre)
      ----------------------------------------------------------------------- */
@@ -490,6 +525,10 @@
     } else if (f.type === "robotRef") {
       inner = '<select id="' + id + '" class="input"><option value="">— Aucun —</option>' +
         ROBOT_REF().map(function (r) { return '<option value="' + esc(r.id) + '" ' + (r.id === value ? "selected" : "") + ">" + esc(r.name) + "</option>"; }).join("") + "</select>";
+    } else if (f.type === "cellRef") {
+      inner = '<select id="' + id + '" class="input"><option value="">— Non affecté —</option>' +
+        cellulesList().map(function (c) { return '<option value="' + esc(c.id) + '" ' + (c.id === value ? "selected" : "") + ">" + esc(c.path) + "</option>"; }).join("") + "</select>";
+      if (!cellulesList().length) inner += '<div class="hint">Aucune cellule définie. Créez-en dans « Hiérarchie du parc ».</div>';
     } else if (f.type === "tags") {
       inner = '<input id="' + id + '" class="input" value="' + esc(parseTags(value).join(", ")) + '" placeholder="séparés par des virgules" />';
     } else if (f.type === "file") {
@@ -602,6 +641,8 @@
           parseTags(v).map(function (t) { return '<span class="chip">' + esc(t) + "</span>"; }).join("") + "</div>";
       } else if (f.type === "robotRef") {
         body += '<div class="kv" style="margin-bottom:8px"><dt>' + esc(f.label) + "</dt><dd>" + esc(robotName(v)) + "</dd></div>";
+      } else if (f.type === "cellRef") {
+        body += '<div class="kv" style="margin-bottom:8px"><dt>' + esc(f.label) + "</dt><dd>" + esc(cellPath(v)) + "</dd></div>";
       } else if (f.type === "textarea") {
         body += '<div class="section-title">' + esc(f.label) + '</div><p style="white-space:pre-wrap;color:var(--text-soft)">' + esc(v) + "</p>";
       } else {
@@ -646,6 +687,7 @@
     return mod.fields.map(function (f) {
       var v = item[f.name];
       if (f.type === "robotRef") return robotName(v);
+      if (f.type === "cellRef") return cellPath(v);
       if (f.type === "tags") return parseTags(v).join(" ");
       if (f.type === "file") return v ? v.name : "";
       return v || "";
@@ -742,7 +784,7 @@
     if (modKey === "robots") {
       sub = (it.model || "—") + " · " + (it.controller || "KRC ?");
       metaChips = chip(it.kss ? "KSS " + it.kss : "") + chip(it.cell) + statusChip(it.status);
-      desc = (it.site ? it.site + " — " : "") + (it.sector || "");
+      desc = (it.cellId && orgNode(it.cellId)) ? cellPath(it.cellId) : ((it.site ? it.site + " — " : "") + (it.sector || ""));
     } else if (modKey === "functions") {
       sub = (it.category || "Fonction") + (it.params ? " " + it.params : "");
       metaChips = parseTags(it.tags).slice(0, 3).map(function (t) { return chip(t); }).join("");
@@ -791,6 +833,185 @@
       var cls = v === "En production" ? "ok" : (v === "En maintenance" ? "warn" : (v === "À l'arrêt" ? "danger" : ""));
       return '<span class="chip ' + cls + '">' + esc(v) + "</span>";
     }
+  }
+
+  /* -----------------------------------------------------------------------
+     Hiérarchie du parc : Sites › Lignes › Cellules › Robots
+     ----------------------------------------------------------------------- */
+  function renderHierarchy() {
+    var wrap = node('<div class="view"></div>');
+    var sites = orgChildren(null, "site");
+    var nbLignes = state.org.filter(function (n) { return n.type === "ligne"; }).length;
+    var nbCell = cellulesList().length;
+    var nbAff = state.robots.filter(function (r) { return r.cellId && orgNode(r.cellId); }).length;
+
+    var toolbar = node('<div class="toolbar">' +
+      '<div><strong style="font-size:15px">Organisation du parc</strong>' +
+      '<div class="hint">' + sites.length + " site(s) · " + nbLignes + " ligne(s) · " + nbCell + " cellule(s) · " +
+      nbAff + "/" + state.robots.length + " robot(s) affecté(s)</div></div>" +
+      '<div class="spacer"></div>' +
+      '<button class="btn btn-primary" data-add-site>' + ICON.plus + "Ajouter un site</button></div>");
+    $("[data-add-site]", toolbar).addEventListener("click", function () { openOrgForm("site", null); });
+    wrap.appendChild(toolbar);
+
+    if (!sites.length) {
+      wrap.appendChild(node('<div class="empty">' + ICON.folder +
+        "<h3>Aucun site</h3><p>Créez un site, puis des lignes et des cellules pour organiser vos robots.</p></div>"));
+      return wrap;
+    }
+
+    var panel = node('<div class="panel"><div class="tree"></div></div>');
+    var tree = $(".tree", panel);
+    sites.forEach(function (s) { tree.appendChild(buildOrgNode(s)); });
+    wrap.appendChild(panel);
+
+    // Robots non affectés
+    var orphans = state.robots.filter(function (r) { return !r.cellId || !orgNode(r.cellId); });
+    if (orphans.length) {
+      var op = node('<div class="panel" style="margin-top:16px"><h3>' + ICON.robot + "Robots non affectés (" + orphans.length + ")</h3></div>");
+      orphans.forEach(function (r) {
+        var row = node('<div class="tree-row"><span class="nav-icon">' + ICON.robot + '</span>' +
+          '<span style="flex:1">' + esc(r.name) + '</span><span class="chip">' + esc(r.model || "—") + "</span>" +
+          '<button class="btn btn-sm" data-assign style="margin-left:8px">Affecter</button></div>');
+        $("[data-assign]", row).addEventListener("click", function (e) { e.stopPropagation(); openAssignRobot(r.id); });
+        row.addEventListener("click", function (e) { if (!e.target.closest("[data-assign]")) openDetail("robots", r.id); });
+        op.appendChild(row);
+      });
+      wrap.appendChild(op);
+    }
+    return wrap;
+  }
+
+  function buildOrgNode(n) {
+    var childType = n.type === "site" ? "ligne" : (n.type === "ligne" ? "cellule" : null);
+    var icon = n.type === "cellule" ? ICON.chip : ICON.folder;
+    var el = node('<div class="tree-node open"></div>');
+
+    var countTxt;
+    if (n.type === "cellule") countTxt = robotsInCell(n.id).length + " robot(s)";
+    else countTxt = orgChildren(n.id, childType).length + (childType === "ligne" ? " ligne(s)" : " cellule(s)");
+
+    var actions = "";
+    if (childType) actions += '<button class="btn btn-sm btn-icon" data-add title="Ajouter">' + ICON.plus + "</button>";
+    if (n.type === "cellule") actions += '<button class="btn btn-sm btn-icon" data-assign title="Affecter des robots">' + ICON.robot + "</button>";
+    actions += '<button class="btn btn-sm btn-icon" data-edit title="Renommer">' + ICON.edit + "</button>";
+    actions += '<button class="btn btn-sm btn-icon btn-danger" data-del title="Supprimer">' + ICON.trash + "</button>";
+
+    var row = node('<div class="tree-row">' +
+      '<span class="tree-caret">' + ICON.chevron + "</span>" +
+      '<span class="nav-icon">' + icon + "</span>" +
+      '<span style="flex:1;font-weight:600">' + esc(n.name) + "</span>" +
+      '<span class="chip">' + countTxt + "</span>" +
+      '<span class="entity-actions" style="margin-left:8px">' + actions + "</span></div>");
+    el.appendChild(row);
+
+    var children = node('<div class="tree-children"></div>');
+    if (n.type === "cellule") {
+      var robs = robotsInCell(n.id);
+      if (!robs.length) children.appendChild(node('<div class="hint" style="padding:6px 8px">Aucun robot affecté.</div>'));
+      robs.forEach(function (r) {
+        var leaf = node('<div class="tree-row"><span style="width:14px"></span><span class="nav-icon">' + ICON.robot + "</span>" +
+          '<span style="flex:1">' + esc(r.name) + '</span><span class="chip">' + esc(r.model || "—") + "</span></div>");
+        leaf.addEventListener("click", function () { openDetail("robots", r.id); });
+        children.appendChild(leaf);
+      });
+    } else {
+      var kids = orgChildren(n.id, childType);
+      if (!kids.length) children.appendChild(node('<div class="hint" style="padding:6px 8px">Vide — ajoutez ' +
+        (childType === "ligne" ? "une ligne" : "une cellule") + ".</div>"));
+      kids.forEach(function (k) { children.appendChild(buildOrgNode(k)); });
+    }
+    el.appendChild(children);
+
+    $(".tree-caret", row).addEventListener("click", function (e) { e.stopPropagation(); el.classList.toggle("open"); });
+    var addBtn = $("[data-add]", row); if (addBtn) addBtn.addEventListener("click", function (e) { e.stopPropagation(); openOrgForm(childType, n.id); });
+    var asg = $("[data-assign]", row); if (asg) asg.addEventListener("click", function (e) { e.stopPropagation(); openAssignToCell(n.id); });
+    $("[data-edit]", row).addEventListener("click", function (e) { e.stopPropagation(); openOrgForm(n.type, n.parentId, n.id); });
+    $("[data-del]", row).addEventListener("click", function (e) { e.stopPropagation(); deleteOrgNode(n); });
+    return el;
+  }
+
+  function openOrgForm(type, parentId, id) {
+    var L = { site: "site", ligne: "ligne", cellule: "cellule" };
+    var ph = { site: "Usine Nord", ligne: "Ligne Carrosserie", cellule: "Cellule A1" };
+    var existing = id ? orgNode(id) : null;
+    var data = existing || {};
+    var html = '<div class="field"><label for="org_name">Nom du ' + L[type] + ' *</label>' +
+      '<input id="org_name" class="input" value="' + esc(data.name || "") + '" placeholder="ex. ' + ph[type] + '" /></div>' +
+      '<div class="field"><label for="org_note">Note</label><textarea id="org_note" class="input">' + esc(data.note || "") + "</textarea></div>";
+    openModal({
+      title: (existing ? "Renommer " : "Ajouter ") + "un " + L[type], body: html,
+      footer: ['<button class="btn" data-close>Annuler</button>',
+        '<button class="btn btn-primary" data-save>' + ICON.check + "Enregistrer</button>"],
+      onMount: function (m) {
+        $("[data-save]", m).addEventListener("click", function () {
+          var name = $("#org_name", m).value.trim();
+          if (!name) { toast("Le nom est requis", "warn"); return; }
+          var note = $("#org_note", m).value.trim();
+          if (existing) { existing.name = name; existing.note = note; existing.updatedAt = nowISO(); }
+          else { state.org.push({ id: uid(), type: type, parentId: parentId || null, name: name, note: note, createdAt: nowISO(), updatedAt: nowISO() }); }
+          persistNow(); persist(); closeModal(); render(); toast("Enregistré", "ok");
+        });
+      }
+    });
+  }
+
+  function deleteOrgNode(n) {
+    var kids = descendantsOf(n.id);
+    var msg = kids.length
+      ? "Supprimer « " + n.name + " » et tout son contenu (" + kids.length + " élément(s)) ? Les robots seront détachés."
+      : "Supprimer « " + n.name + " » ?";
+    confirmDialog(msg, function () {
+      var toRemove = [n.id].concat(kids);
+      state.org = state.org.filter(function (x) { return toRemove.indexOf(x.id) < 0; });
+      state.robots.forEach(function (r) { if (r.cellId && toRemove.indexOf(r.cellId) >= 0) delete r.cellId; });
+      persistNow(); persist(); render(); toast("Supprimé", "ok");
+    }, true);
+  }
+
+  function openAssignToCell(cellId) {
+    var cell = orgNode(cellId);
+    var body = state.robots.length ? state.robots.map(function (r) {
+      var checked = r.cellId === cellId ? "checked" : "";
+      var where = (r.cellId && r.cellId !== cellId && orgNode(r.cellId)) ? ' <span class="hint">(' + esc(cellPath(r.cellId)) + ")</span>" : "";
+      return '<label style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)">' +
+        '<input type="checkbox" data-r="' + esc(r.id) + '" ' + checked + "/>" +
+        '<span style="flex:1">' + esc(r.name) + where + '</span><span class="chip">' + esc(r.model || "—") + "</span></label>";
+    }).join("") : '<div class="hint">Aucun robot. Ajoutez-en d\'abord dans « Parc robots ».</div>';
+    openModal({
+      title: "Affecter des robots — " + (cell ? cell.name : ""), body: body,
+      footer: ['<button class="btn" data-close>Annuler</button>',
+        '<button class="btn btn-primary" data-save>' + ICON.check + "Enregistrer</button>"],
+      onMount: function (m) {
+        $("[data-save]", m).addEventListener("click", function () {
+          $$("[data-r]", m).forEach(function (cb) {
+            var rob = state.robots.filter(function (x) { return x.id === cb.getAttribute("data-r"); })[0];
+            if (!rob) return;
+            if (cb.checked) rob.cellId = cellId;
+            else if (rob.cellId === cellId) delete rob.cellId;
+          });
+          persistNow(); persist(); closeModal(); render(); toast("Affectation mise à jour", "ok");
+        });
+      }
+    });
+  }
+
+  function openAssignRobot(robotId) {
+    var rob = state.robots.filter(function (x) { return x.id === robotId; })[0];
+    var cells = cellulesList();
+    if (!cells.length) { toast("Créez d'abord une cellule", "warn"); return; }
+    var html = '<div class="field"><label for="asg_cell">Affecter « ' + esc(rob.name) + ' » à la cellule</label>' +
+      '<select id="asg_cell" class="input">' + cells.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.path) + "</option>"; }).join("") + "</select></div>";
+    openModal({
+      title: "Affecter un robot", body: html,
+      footer: ['<button class="btn" data-close>Annuler</button>',
+        '<button class="btn btn-primary" data-save>' + ICON.check + "Enregistrer</button>"],
+      onMount: function (m) {
+        $("[data-save]", m).addEventListener("click", function () {
+          rob.cellId = $("#asg_cell", m).value; persistNow(); persist(); closeModal(); render(); toast("Robot affecté", "ok");
+        });
+      }
+    });
   }
 
   /* -----------------------------------------------------------------------
@@ -981,11 +1202,16 @@
      ----------------------------------------------------------------------- */
   var renderers = {
     dashboard: renderDashboard,
+    hierarchy: renderHierarchy,
     __search: function () { return renderSearch(state.settings._search); }
   };
   Object.keys(MODULES).forEach(function (k) { renderers[k] = function () { return renderModuleView(k); }; });
 
-  var VIEW_META = { dashboard: { title: "Tableau de bord", sub: "Vue d'ensemble du référentiel" }, __search: { title: "Recherche", sub: "" } };
+  var VIEW_META = {
+    dashboard: { title: "Tableau de bord", sub: "Vue d'ensemble du référentiel" },
+    hierarchy: { title: "Hiérarchie du parc", sub: "Organisation Sites › Lignes › Cellules et rattachement des robots" },
+    __search: { title: "Recherche", sub: "" }
+  };
   Object.keys(MODULES).forEach(function (k) { VIEW_META[k] = { title: MODULES[k].label, sub: MODULES[k].sub }; });
 
   function buildNav() {
@@ -995,6 +1221,7 @@
     nav.appendChild(navItem("dashboard", "Tableau de bord", "dashboard"));
     NAV_GROUPS.slice(1).forEach(function (g) {
       nav.appendChild(node('<div class="nav-group-label">' + esc(g) + "</div>"));
+      if (g === "Robotique") nav.appendChild(navItem("hierarchy", "Hiérarchie du parc", "folder", cellulesList().length));
       Object.keys(MODULES).forEach(function (k) {
         if (MODULES[k].group === g) nav.appendChild(navItem(k, MODULES[k].label, MODULES[k].icon, state[k].length));
       });
@@ -1038,6 +1265,8 @@
       var n = $('.nav-item[data-view="' + k + '"] .nav-count');
       if (n) n.textContent = state[k].length;
     });
+    var hc = $('.nav-item[data-view="hierarchy"] .nav-count');
+    if (hc) hc.textContent = cellulesList().length;
   }
 
   /* -----------------------------------------------------------------------
